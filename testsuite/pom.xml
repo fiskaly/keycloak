@@ -31,12 +31,6 @@
     <name>Keycloak TestSuite</name>
     <description />
 
-    <properties>
-        <keycloak.map.storage.connectionsJpa.url>jdbc:postgresql://localhost:5432/keycloak</keycloak.map.storage.connectionsJpa.url>
-        <keycloak.map.storage.connectionsJpa.user>keycloak</keycloak.map.storage.connectionsJpa.user>
-        <keycloak.map.storage.connectionsJpa.password>pass</keycloak.map.storage.connectionsJpa.password>
-    </properties>
-
     <build>
         <plugins>
             <plugin>
@@ -61,5 +55,27 @@
         <module>model</module>
         <module>utils</module>
     </modules>
+
+    <profiles>
+        <profile>
+            <id>deploy-testsuite</id>
+            <activation>
+                <property>
+                    <name>deployTestsuite</name>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-deploy-plugin</artifactId>
+                        <configuration>
+                            <skip>false</skip>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>

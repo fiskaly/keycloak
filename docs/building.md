@@ -1,6 +1,6 @@
 ## Building from source
 
-Ensure you have JDK 11 (or newer) and Git installed
+Ensure you have JDK 17 (or newer) and Git installed
 
     java -version
     git --version
@@ -18,17 +18,17 @@ To build Keycloak run:
 
     ./mvnw clean install
     
-This will build all modules and run the testsuite. 
+This will build all modules and run the testsuite.
 
-To build the ZIP distribution run:
+To build Keycloak with adapters run:
 
     ./mvnw clean install -Pdistribution
-    
-Once completed you will find distribution archives in `distribution`.
 
 To build only the server run:
 
-    ./mvnw -Pdistribution -pl quarkus/dist -am -Dmaven.test.skip clean install
+    ./mvnw -pl quarkus/deployment,quarkus/dist -am -DskipTests clean install
+
+You can then find the ZIP distribution in `quarkus/dist/target` folder.
 
 ---
 **NOTE**
@@ -47,19 +47,15 @@ To enable it by default, add it to the `MAVEN_OPTS` environment variable:
 
     export MAVEN_OPTS="-Dmaven.build.cache.enabled=true"
 
-### Building Quarkus Distribution
-
-Please, take a look at this [documentation](../quarkus/README.md).
-
-## Starting Keycloak
+### Starting Keycloak
 
 To start Keycloak during development first build as specified above, then run:
 
-    ./mvnw -f testsuite/utils/pom.xml exec:java -Pkeycloak-server 
-
-When running testsuite, by default an account with username `admin` and password `admin` will be created within the master realm at start.
+    java -jar quarkus/server/target/lib/quarkus-run.jar start-dev
 
 To stop the server press `Ctrl + C`.
+
+For more details, follow the [`quarkus` module documentation](../quarkus/README.md).
 
 ## Working with the codebase
 

@@ -51,7 +51,7 @@ export const EditTheResource = ({
 
   return (
     <Modal
-      title={t("editTheResource", [resource.name])}
+      title={t("editTheResource", { name: resource.name })}
       variant="medium"
       isOpen
       onClose={onClose}
@@ -89,7 +89,6 @@ export const EditTheResource = ({
                   key: name,
                   value: displayName || name,
                 }))}
-                menuAppendTo="parent"
               />
             </Fragment>
           ))}

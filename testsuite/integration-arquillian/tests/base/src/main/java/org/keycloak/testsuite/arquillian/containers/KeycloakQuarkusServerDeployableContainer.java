@@ -27,6 +27,7 @@ import org.apache.commons.exec.StreamPumper;
 import org.jboss.arquillian.container.spi.client.container.LifecycleException;
 import org.jboss.logging.Logger;
 import org.keycloak.testsuite.model.StoreProvider;
+import org.keycloak.testsuite.util.WaitUtils;
 
 /**
  * @author mhajas
@@ -72,6 +73,7 @@ public class KeycloakQuarkusServerDeployableContainer extends AbstractQuarkusDep
         commands.add(getCommand());
         commands.add("-v");
         commands.add(command);
+        addFeaturesOption(commands);
         if (args != null) {
             commands.addAll(Arrays.asList(args));
         }
@@ -145,10 +147,7 @@ public class KeycloakQuarkusServerDeployableContainer extends AbstractQuarkusDep
             builder.environment().put("JAVA_OPTS", javaOpts);
         }
 
-        final StoreProvider storeProvider = StoreProvider.getCurrentProvider();
-        final boolean isJpaStore = storeProvider.equals(StoreProvider.JPA) || storeProvider.equals(StoreProvider.LEGACY);
-
-        if (!isJpaStore) {
+        if (!StoreProvider.JPA.equals(StoreProvider.getCurrentProvider())) {
             builder.environment().put("KEYCLOAK_ADMIN", "admin");
             builder.environment().put("KEYCLOAK_ADMIN_PASSWORD", "admin");
         }
@@ -175,6 +174,13 @@ public class KeycloakQuarkusServerDeployableContainer extends AbstractQuarkusDep
     private ProcessBuilder getProcessBuilder() {
         Map<String, String> env = new HashMap<>();
         String[] processCommands = getArgs(env).toArray(new String[0]);
+        if (suiteContext.get().isAuthServerMigrationEnabled() && configuration.getImportFile() != null) {
+            for (int i = 0; i < processCommands.length; i++) {
+                if (processCommands[i].startsWith("--db-url=")) {
+                    processCommands[i]= "--db-url=\"" + processCommands[i].substring(9) + "\"";
+                }
+            }
+        }
         ProcessBuilder pb = new ProcessBuilder(processCommands);
 
         pb.environment().putAll(env);
@@ -193,6 +199,11 @@ public class KeycloakQuarkusServerDeployableContainer extends AbstractQuarkusDep
         if (!isWindows()) {
             return;
         }
+
+        // Wait some time before killing the windows processes. Otherwise there is a risk that some already commited H2 transactions
+        // won't be written to disk in time and hence those transactions may be lost, which could result in test failures in the next step after server restart.
+        // See http://repository.transtep.com/repository/thirdparty/H2/1.0.63/docs/html/advanced.html#durability_problems for the details
+        WaitUtils.pause(2000);
 
         CompletableFuture allProcesses = CompletableFuture.completedFuture(null);
 

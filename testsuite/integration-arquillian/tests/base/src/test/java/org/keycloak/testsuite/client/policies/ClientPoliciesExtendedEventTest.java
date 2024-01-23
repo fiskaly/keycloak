@@ -65,7 +65,6 @@ import org.keycloak.testsuite.pages.ErrorPage;
 import org.keycloak.testsuite.pages.LogoutConfirmPage;
 import org.keycloak.testsuite.pages.OAuth2DeviceVerificationPage;
 import org.keycloak.testsuite.pages.OAuthGrantPage;
-import org.keycloak.testsuite.services.clientpolicy.executor.TestEnhancedPluggableTokenManagerExecutor;
 import org.keycloak.testsuite.services.clientpolicy.executor.TestEnhancedPluggableTokenManagerExecutorFactory;
 import org.keycloak.testsuite.services.clientpolicy.executor.TestRaiseExceptionExecutorFactory;
 import org.keycloak.testsuite.util.ClientBuilder;
@@ -584,10 +583,18 @@ public class ClientPoliciesExtendedEventTest extends AbstractClientPoliciesTest 
         ).toString();
         updateProfiles(json);
 
+        String clientId = generateSuffixedName(CLIENT_NAME);
+        String clientSecret = "secret";
+        String cid = createClientByAdmin(clientId, (ClientRepresentation clientRep) -> {
+            clientRep.setSecret(clientSecret);
+        });
+        adminClient.realm(REALM_NAME).clients().get(cid).roles().create(RoleBuilder.create().name(SAMPLE_CLIENT_ROLE).build());
+
         // register policies
         json = (new ClientPoliciesBuilder()).addPolicy(
-                (new ClientPolicyBuilder()).createPolicy(POLICY_NAME, "La Premiere Politique", Boolean.TRUE)
-                        .addCondition(AnyClientConditionFactory.PROVIDER_ID, createAnyClientConditionConfig())
+                (new ClientPolicyBuilder()).createPolicy(POLICY_NAME, "Dei Eischt Politik", Boolean.TRUE)
+                        .addCondition(ClientRolesConditionFactory.PROVIDER_ID,
+                                createClientRolesConditionConfig(Arrays.asList(SAMPLE_CLIENT_ROLE)))
                         .addProfile(PROFILE_NAME)
                         .toRepresentation()
         ).toString();
@@ -595,7 +602,7 @@ public class ClientPoliciesExtendedEventTest extends AbstractClientPoliciesTest 
 
         // Authorization Request
         oauth.realm(REALM_NAME);
-        oauth.clientId("foo");
+        oauth.clientId(clientId);
         oauth.openLoginForm();
         assertTrue(errorPage.isCurrent());
         assertEquals("Exception thrown intentionally", errorPage.getError());

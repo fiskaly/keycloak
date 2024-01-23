@@ -1,0 +1,145 @@
+= New Welcome Page
+
+The 'welcome' page that is shown when a user starts Keycloak for the first time, has been redesigned to provide a better setup experience and has been upgraded to the latest version of https://www.patternfly.org/[PatternFly]. The page layout has been simplified and now includes only a form to register the administrative user. After completing the registration, the user is redirected directly to the Administration Console.
+
+image::images/new-welcome-screen.png["A screenshot of the new welcome page, showing a simplified layout with a user registration form."]
+
+If you are using a custom theme, you may need to update it to support the new welcome page. For more details consult the link:{upgradingguide_link}[{upgradingguide_name}].
+
+= Keycloak JS using `exports` field
+
+The Keycloak JS adapter now uses the https://webpack.js.org/guides/package-exports/[`exports` field] in `package.json`. This change improves support for more modern bundlers like Webpack 5 and Vite, but comes with some unavoidable breaking changes. Consult the link:{upgradingguide_link}[{upgradingguide_name}] for more details.
+
+= Truststore Improvements
+
+Keycloak introduces an improved truststores configuration options. The Keycloak truststore is now used across the server: for outgoing connections, mTLS, database drivers and more. It's no longer needed to configure separate truststores for individual areas. To configure the truststore, you can put your truststores files or certificates in the default `conf/truststores`, or use the new `truststore-paths` config option. For details refer to the relevant https://www.keycloak.org/server/keycloak-truststore[guide].
+
+= Versioned Features
+
+Features now support versioning. For preserving backward compatibility all existing features (incl. `account2` and `account3`) are marked as version 1. Newly introduced feature will leverage the versioning allowing users to easily select between different implementations of desired features.
+
+For details refer to the https://www.keycloak.org/server/features[features guide].
+
+== Keycloak CR Truststores
+
+You may also take advantage of the new server-side handling of truststores via the Keycloak CR, for example:
+
+[source,yaml]
+----
+spec:
+  truststores:
+    mystore:
+      secret:
+        name: mystore-secret
+    myotherstore:
+      secret:
+        name: myotherstore-secret
+----
+
+Currently only Secrets are supported.
+
+== Trust Kubernetes CA
+
+The cert for the Kubernetes CA is added automatically to your {project_name} Pods managed by the Operator.
+
+= Automatic certificate management for SAML identity providers
+
+The SAML identity providers can now be configured to automatically download the signing certificates from the IDP entity metadata descriptor endpoint. In order to use the new feature the option `Metadata descriptor URL` should be configured in the provider (URL where the IDP metadata information with the certificates is published) and `Use metadata descriptor URL` needs to be `ON`. The certificates are automatically downloaded and cached in the `public-key-storage` SPI from that URL. The certificates can also be reloaded or imported from the admin console, using the action combo in the provider page.
+
+See the https://www.keycloak.org/docs/latest/server_admin/index.html#saml-v2-0-identity-providers[documentation] for more details about the new options.
+
+= Non-blocking health check for load balancers
+
+A new health check endpoint available at `/lb-check` was added.
+The execution is running in the event loop which means this check is responsive also in overloaded situations when Keycloak needs to handle many requests waiting in request queue.
+This behavior is useful, for example, in multi-site deployment where we do not want to fail over to the other site under heavy load.
+The endpoint is currently checking availability of the embedded and external Infinispan caches. Other checks may be added later.
+
+
+This endpoint is not available by default.
+To enable it, run Keycloak with feature `multi-site`.
+Proceed to https://www.keycloak.org/server/features[Enabling and disabling features] guide for more details.
+
+= Keycloak CR Optimized Field
+
+The Keycloak CR now includes an `startOptimized` field, which may be used to override the default assumption about whether to use the `--optimized` flag for the start command.
+As a result, you can use the CR to configure build time options also when a custom Keycloak image is used.
+
+= Enhanced reverse proxy settings
+
+It is now possible to separately enable parsing of either `Forwarded` or `X-Forwarded-*` headers via the new `--proxy-headers` option.
+For details consult the https://www.keycloak.org/server/reverseproxy[Reverse Proxy Guide].
+The original `--proxy` option is now deprecated and will be removed in a future release. For migration instructions consult the link:{upgradingguide_link}[{upgradingguide_name}].
+
+= Breaking changes to the User Profile SPI
+
+In this release, there are changes to the User Profile SPI that might impact existing implementations based on this SPI. For more details, check the
+link:{upgradingguide_link}[{upgradingguide_name}].
+
+= Changes to the user representation in both Admin API and Account contexts
+
+In this release, we are encapsulating the root user attributes (such as `username`, `email`, `firstName`, `lastName`, and `locale`) by moving them to a base/abstract class in order to align how these attributes
+are marshalled and unmarshalled when using both Admin and Account REST APIs.
+
+This strategy provides consistency in how attributes are managed by clients and makes sure they conform to the user profile
+configuration set to a realm.
+
+For more details, see link:{upgradingguide_link}[{upgradingguide_name}].
+
+= Changes to Freemarker templates to allow rendering pages based on the user profile configuration set to a realm
+
+In this release, the following templates were updated to make it possible to dynamically render attributes based
+on the user profile configuration set to a realm:
+
+* `login-update-profile.ftl`
+* `register.ftl`
+* `update-email.ftl`
+
+For more details, see link:{upgradingguide_link}[{upgradingguide_name}].
+
+= The update profile page when logging in for the first time through a broker now have its own Freemarker templates
+
+In this release, the server will render the update profile page when the user is authenticating through a broker for the
+first time using the `idp-review-user-profile.ftl` template.
+
+For more details, see link:{upgradingguide_link}[{upgradingguide_name}].
+
+= Sequential loading of offline sessions and remote sessions
+
+Starting with this release, the first member of a Keycloak cluster will load remote sessions sequentially instead of in parallel.
+If offline session preloading is enabled, those will be loaded sequentially as well.
+
+For more details, see link:{upgradingguide_link}[{upgradingguide_name}].
+
+= Performing actions on behalf of another user is not longer possible when the user is already authenticated
+
+In this release, you can no longer perform actions such as email verification if the user is already authenticated
+and the action is bound to another user. For instance, a user can not complete the verification email flow if the email link
+is bound to a different account.
+
+= Changes to the email verification flow
+
+In this release, if a user tries to follow the link to verify the email and the email was previously verified, a proper message
+will be shown.
+
+In addition to that, a new error (`EMAIL_ALREADY_VERIFIED`) event will be fired to indicate an attempt to verify an already verified email. You can
+use this event to track possible attempts to hijack user accounts in case the link has leaked or to alert users if they do not recognize the action.
+
+= Deprecated offline session preloading
+
+The default behavior of Keycloak is to load offline sessions on demand.
+The old behavior to preload them at startup is now deprecated, as pre-loading them at startup doesn't scale well with a growing number of sessions, and increases Keycloak memory usage. The old behavior will be removed in a future release.
+
+For more details, check the
+link:{upgradingguide_link}[{upgradingguide_name}].
+
+= Infinispan metrics use labels for cache manager and cache names
+
+When enabling metrics for {project_name}'s embedded caches, the metrics now use labels for the cache manager and the cache names.
+
+For more details, check the
+link:{upgradingguide_link}[{upgradingguide_name}].
+
+= Authorization Policy
+
+In previous versions of Keycloak when the last member of a User, Group or Client policy was deleted then that policy would also be deleted. Unfortunately this could lead to an escalation of privileges if the policy was used in an aggregate policy. To avoid privilege escalation the effect policies are no longer deleted and an administrator will need to update those policies.

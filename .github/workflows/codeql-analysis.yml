@@ -9,9 +9,12 @@ on:
      branches: [main]
   workflow_dispatch:
 
+env:
+  MAVEN_ARGS: "-B -nsu -Daether.connector.http.connectionMaxTtl=25"
+
 concurrency:
   # Only cancel jobs for PR updates
-  group: codeql-analysis-${{ github.head_ref || github.run_id }}
+  group: codeql-analysis-${{ github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -27,10 +30,12 @@ jobs:
       java: ${{ steps.conditional.outputs.codeql-java }}
       themes: ${{ steps.conditional.outputs.codeql-themes }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - id: conditional
         uses: ./.github/actions/conditional
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   java:
     name: CodeQL Java
@@ -41,10 +46,10 @@ jobs:
       conclusion: ${{ steps.check.outputs.conclusion }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2.21.0
+        uses: github/codeql-action/init@v3
         with:
           languages: java
 
@@ -52,14 +57,11 @@ jobs:
         uses: ./.github/actions/build-keycloak
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v2.21.0
+        uses: github/codeql-action/analyze@v3
         with:
           wait-for-processing: true
         env:
           CODEQL_ACTION_EXTRA_OPTIONS: '{"database":{"interpret-results":["--max-paths",0]}}'
-
-      - id: check
-        uses: ./.github/actions/checks-success
 
   themes:
     name: CodeQL Themes
@@ -70,10 +72,10 @@ jobs:
       conclusion: ${{ steps.check.outputs.conclusion }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2.21.0
+        uses: github/codeql-action/init@v3
         env:
           CODEQL_ACTION_EXTRA_OPTIONS: '{"database":{"finalize":["--no-run-unnecessary-builds"]}}'
         with:
@@ -81,32 +83,22 @@ jobs:
           source-root: themes/src/main/
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v2.21.0
+        uses: github/codeql-action/analyze@v3
         with:
           wait-for-processing: true
         env:
           CODEQL_ACTION_EXTRA_OPTIONS: '{"database":{"interpret-results":["--max-paths",0]}}'
 
-      - id: check
-        uses: ./.github/actions/checks-success
-
   check:
     name: Status Check - CodeQL
     if: always()
-    needs: [conditional, java, themes]
+    needs:
+      - conditional
+      - java
+      - themes
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v3
-
-      - name: CodeQL Java
-        uses: ./.github/actions/checks-job-pass
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/status-check
         with:
-          required: ${{ needs.conditional.outputs.java }}
-          conclusion: ${{ needs.java.outputs.conclusion }}
-
-      - name: CodeQL Themes
-        uses: ./.github/actions/checks-job-pass
-        with:
-          required: ${{ needs.conditional.outputs.themes }}
-          conclusion: ${{ needs.themes.outputs.conclusion }}
+          jobs: ${{ toJSON(needs) }}

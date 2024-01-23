@@ -51,9 +51,12 @@ import org.keycloak.cluster.ClusterListener;
 import org.keycloak.cluster.ClusterProvider;
 import org.keycloak.common.util.ConcurrentMultivaluedHashMap;
 import org.keycloak.common.util.Retry;
+import org.keycloak.connections.infinispan.DefaultInfinispanConnectionProviderFactory;
 import org.keycloak.executors.ExecutorsProvider;
 import org.keycloak.models.KeycloakSession;
 import org.infinispan.client.hotrod.exceptions.HotRodClientException;
+
+import static org.keycloak.cluster.infinispan.InfinispanClusterProvider.TASK_KEY_PREFIX;
 
 /**
  * Impl for sending infinispan messages across cluster and listening to them
@@ -70,7 +73,7 @@ public class InfinispanNotificationsManager {
 
     private final Cache<String, Serializable> workCache;
 
-    private final RemoteCache<String, Serializable> workRemoteCache;
+    private final RemoteCache workRemoteCache;
 
     private final String myAddress;
 
@@ -79,7 +82,7 @@ public class InfinispanNotificationsManager {
     private final ExecutorService listenersExecutor;
 
 
-    protected InfinispanNotificationsManager(Cache<String, Serializable> workCache, RemoteCache<String, Serializable> workRemoteCache, String myAddress, String mySite, ExecutorService listenersExecutor) {
+    protected InfinispanNotificationsManager(Cache<String, Serializable> workCache, RemoteCache workRemoteCache, String myAddress, String mySite, ExecutorService listenersExecutor) {
         this.workCache = workCache;
         this.workRemoteCache = workRemoteCache;
         this.myAddress = myAddress;
@@ -90,7 +93,7 @@ public class InfinispanNotificationsManager {
 
     // Create and init manager including all listeners etc
     public static InfinispanNotificationsManager create(KeycloakSession session, Cache<String, Serializable> workCache, String myAddress, String mySite, Set<RemoteStore> remoteStores) {
-        RemoteCache<String, Serializable> workRemoteCache = null;
+        RemoteCache workRemoteCache = null;
 
         if (!remoteStores.isEmpty()) {
             RemoteStore remoteStore = remoteStores.iterator().next();
@@ -157,11 +160,13 @@ public class InfinispanNotificationsManager {
             // Add directly to remoteCache. Will notify remote listeners on all nodes in all DCs
             Retry.executeWithBackoff((int iteration) -> {
                 try {
-                    workRemoteCache.put(eventKey, wrappedEvent, 120, TimeUnit.SECONDS);
+                    DefaultInfinispanConnectionProviderFactory.runWithReadLockOnCacheManager(() ->
+                            workRemoteCache.put(eventKey, wrappedEvent, 120, TimeUnit.SECONDS)
+                    );
                 } catch (HotRodClientException re) {
-                    if (logger.isDebugEnabled()) {
-                        logger.debugf(re, "Failed sending notification to remote cache '%s'. Key: '%s', iteration '%s'. Will try to retry the task",
-                                workRemoteCache.getName(), eventKey, iteration);
+                if (logger.isDebugEnabled()) {
+                    logger.debugf(re, "Failed sending notification to remote cache '%s'. Key: '%s', iteration '%s'. Will try to retry the task",
+                            workRemoteCache.getName(), eventKey, iteration);
                 }
 
                 // Rethrow the exception. Retry will take care of handle the exception and eventually retry the operation.
@@ -184,7 +189,7 @@ public class InfinispanNotificationsManager {
 
         @CacheEntryModified
         public void cacheEntryModified(CacheEntryModifiedEvent<String, Serializable> event) {
-            eventReceived(event.getKey(), event.getNewValue());
+            eventReceived(event.getKey(), event.getValue());
         }
 
         @CacheEntryRemoved
@@ -198,30 +203,30 @@ public class InfinispanNotificationsManager {
     @ClientListener
     public class HotRodListener {
 
-        private final RemoteCache<String, Serializable> remoteCache;
+        private final RemoteCache<Object, Object> remoteCache;
 
-        public HotRodListener(RemoteCache<String, Serializable> remoteCache) {
+        public HotRodListener(RemoteCache<Object, Object> remoteCache) {
             this.remoteCache = remoteCache;
         }
 
 
         @ClientCacheEntryCreated
-        public void created(ClientCacheEntryCreatedEvent<String> event) {
-            String key = event.getKey();
+        public void created(ClientCacheEntryCreatedEvent event) {
+            String key = event.getKey().toString();
             hotrodEventReceived(key);
         }
 
 
         @ClientCacheEntryModified
-        public void updated(ClientCacheEntryModifiedEvent<String> event) {
-            String key = event.getKey();
+        public void updated(ClientCacheEntryModifiedEvent event) {
+            String key = event.getKey().toString();
             hotrodEventReceived(key);
         }
 
 
         @ClientCacheEntryRemoved
-        public void removed(ClientCacheEntryRemovedEvent<String> event) {
-            String key = event.getKey();
+        public void removed(ClientCacheEntryRemovedEvent event) {
+            String key = event.getKey().toString();
             taskFinished(key, true);
         }
 
@@ -230,7 +235,12 @@ public class InfinispanNotificationsManager {
             // TODO: Look at CacheEventConverter stuff to possibly include value in the event and avoid additional remoteCache request
             try {
                 listenersExecutor.submit(() -> {
-                    eventReceived(key, remoteCache.get(key));
+                    Object value = DefaultInfinispanConnectionProviderFactory.runWithReadLockOnCacheManager(() ->
+                            // We've seen deadlocks in Infinispan 14.x when shutting down Infinispan concurrently, therefore wrapping this
+                            remoteCache.get(key)
+                    );
+                    eventReceived(key, (Serializable) value);
+
                 });
             } catch (RejectedExecutionException ree) {
                 // server is shutting down or pool was terminated - don't throw errors
@@ -249,7 +259,9 @@ public class InfinispanNotificationsManager {
 
     private void eventReceived(String key, Serializable obj) {
         if (!(obj instanceof WrapperClusterEvent)) {
-            if (obj == null) {
+            // Items with the TASK_KEY_PREFIX might be gone fast once the locking is complete, therefore, don't log them.
+            // It is still good to have the warning in case of real events return null because they have been, for example, expired
+            if (obj == null && !key.startsWith(TASK_KEY_PREFIX)) {
                 logger.warnf("Event object wasn't available in remote cache after event was received. Event key: %s", key);
             }
             return;

@@ -19,6 +19,7 @@ package org.keycloak.cluster.infinispan;
 
 import org.infinispan.Cache;
 import org.infinispan.client.hotrod.exceptions.HotRodClientException;
+import org.infinispan.lifecycle.ComponentStatus;
 import org.infinispan.manager.EmbeddedCacheManager;
 import org.infinispan.notifications.Listener;
 import org.infinispan.notifications.cachemanagerlistener.annotation.ViewChanged;
@@ -30,15 +31,14 @@ import org.jboss.logging.Logger;
 import org.keycloak.Config;
 import org.keycloak.cluster.ClusterProvider;
 import org.keycloak.cluster.ClusterProviderFactory;
-import org.keycloak.common.Profile;
 import org.keycloak.common.util.Retry;
 import org.keycloak.common.util.Time;
+import org.keycloak.connections.infinispan.DefaultInfinispanConnectionProviderFactory;
 import org.keycloak.connections.infinispan.InfinispanConnectionProvider;
 import org.keycloak.connections.infinispan.TopologyInfo;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.connections.infinispan.InfinispanUtil;
-import org.keycloak.provider.EnvironmentDependentProviderFactory;
 
 import java.io.Serializable;
 import java.util.Collection;
@@ -55,7 +55,7 @@ import java.util.stream.Collectors;
  *
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
-public class InfinispanClusterProviderFactory implements ClusterProviderFactory, EnvironmentDependentProviderFactory {
+public class InfinispanClusterProviderFactory implements ClusterProviderFactory {
 
     public static final String PROVIDER_ID = "infinispan";
 
@@ -191,11 +191,6 @@ public class InfinispanClusterProviderFactory implements ClusterProviderFactory,
         return PROVIDER_ID;
     }
 
-    @Override
-    public boolean isSupported() {
-        return !Profile.isFeatureEnabled(Profile.Feature.MAP_STORAGE);
-    }
-
     @Listener
     public class ViewChangeListener {
 
@@ -220,7 +215,13 @@ public class InfinispanClusterProviderFactory implements ClusterProviderFactory,
                         }
 
                         logger.debugf("Nodes %s removed from cluster. Removing tasks locked by this nodes", removedNodesAddresses.toString());
-                        workCache.entrySet().removeIf(new LockEntryPredicate(removedNodesAddresses));
+                        DefaultInfinispanConnectionProviderFactory.runWithReadLockOnCacheManager(() -> {
+                            if (workCache.getStatus() == ComponentStatus.RUNNING) {
+                                workCache.entrySet().removeIf(new LockEntryPredicate(removedNodesAddresses));
+                            } else {
+                                logger.warn("work cache is not running, ignoring event");
+                            }
+                        });
                     }
                 } catch (Throwable t) {
                     logger.error("caught exception in ViewChangeListener", t);

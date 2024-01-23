@@ -30,7 +30,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.keycloak.OAuth2Constants;
-import org.keycloak.OAuthErrorException;
 import org.keycloak.admin.client.resource.ClientResource;
 import org.keycloak.admin.client.resource.ClientsResource;
 import org.keycloak.events.Details;
@@ -124,7 +123,7 @@ public class LegacyLogoutTest extends AbstractTestRealmKeycloakTest {
         driver.navigate().to(logoutUrl);
 
         events.expectLogout(sessionId).detail(Details.REDIRECT_URI, APP_REDIRECT_URI).assertEvent();
-        Assert.assertThat(false, is(isSessionActive(sessionId)));
+        assertThat(false, is(isSessionActive(sessionId)));
         assertCurrentUrlEquals(APP_REDIRECT_URI);
     }
 
@@ -139,13 +138,13 @@ public class LegacyLogoutTest extends AbstractTestRealmKeycloakTest {
 
         // Assert logout confirmation page. Session still exists. Assert default language on logout page (English)
         logoutConfirmPage.assertCurrent();
-        Assert.assertThat(true, is(isSessionActive(sessionId)));
+        assertThat(true, is(isSessionActive(sessionId)));
         events.assertEmpty();
         logoutConfirmPage.confirmLogout();
 
         // Redirected back to the application with expected state
-        events.expectLogout(sessionId).removeDetail(Details.REDIRECT_URI).assertEvent();
-        Assert.assertThat(false, is(isSessionActive(sessionId)));
+        events.expectLogout(sessionId).client("account").removeDetail(Details.REDIRECT_URI).assertEvent();
+        assertThat(false, is(isSessionActive(sessionId)));
         assertCurrentUrlEquals(APP_REDIRECT_URI);
     }
 
@@ -165,7 +164,7 @@ public class LegacyLogoutTest extends AbstractTestRealmKeycloakTest {
         logoutConfirmPage.confirmLogout();
 
         // Redirected back to the application with expected state
-        events.expectLogout(sessionId).removeDetail(Details.REDIRECT_URI).assertEvent();
+        events.expectLogout(sessionId).client("account").removeDetail(Details.REDIRECT_URI).assertEvent();
         assertThat(false, is(isSessionActive(sessionId)));
         assertCurrentUrlEquals(APP_REDIRECT_URI);
     }
@@ -200,7 +199,7 @@ public class LegacyLogoutTest extends AbstractTestRealmKeycloakTest {
             Assert.assertEquals("Invalid redirect uri", errorPage.getError());
 
             // Session still active
-            Assert.assertThat(true, is(isSessionActive(tokenResponse.getSessionState())));
+            assertThat(true, is(isSessionActive(tokenResponse.getSessionState())));
         } finally {
             // Revert
             clientRes.update(clientRepOrig);
@@ -230,7 +229,7 @@ public class LegacyLogoutTest extends AbstractTestRealmKeycloakTest {
             logoutConfirmPage.confirmLogout();
 
             // Redirected back to the application with expected state
-            events.expectLogout(sessionId).removeDetail(Details.REDIRECT_URI).assertEvent();
+            events.expectLogout(sessionId).client("account").removeDetail(Details.REDIRECT_URI).assertEvent();
             MatcherAssert.assertThat(false, is(isSessionActive(sessionId)));
             assertCurrentUrlEquals(APP_REDIRECT_URI);
         }
@@ -248,8 +247,8 @@ public class LegacyLogoutTest extends AbstractTestRealmKeycloakTest {
         String logoutUrl = oauth.getLogoutUrl().postLogoutRedirectUri(APP_REDIRECT_URI).build();
         driver.navigate().to(logoutUrl);
 
-        events.expectLogout(sessionId).detail(Details.REDIRECT_URI, APP_REDIRECT_URI).assertEvent();
-        Assert.assertThat(false, is(isSessionActive(sessionId)));
+        events.expectLogout(sessionId).client("account").detail(Details.REDIRECT_URI, APP_REDIRECT_URI).assertEvent();
+        assertThat(false, is(isSessionActive(sessionId)));
         assertCurrentUrlEquals(APP_REDIRECT_URI);
     }
 

@@ -13,6 +13,7 @@ export default class UserDetailsPage extends PageObject {
   lastNameValue: string;
   requiredUserActions: RequiredActionAlias[];
   identityProviderLinksTab: string;
+  detailsTab: string;
   consentsTab: string;
   sessionsTab: string;
 
@@ -20,22 +21,28 @@ export default class UserDetailsPage extends PageObject {
     super();
     this.saveBtn = "save-user";
     this.cancelBtn = "cancel-create-user";
-    this.emailInput = "email-input";
+    this.emailInput = "email";
     this.emailValue = () => "example" + "_" + uuid() + "@example.com";
-    this.firstNameInput = "firstName-input";
+    this.firstNameInput = "firstName";
     this.firstNameValue = "firstname";
-    this.lastNameInput = "lastName-input";
+    this.lastNameInput = "lastName";
     this.lastNameValue = "lastname";
     this.requiredUserActions = [RequiredActionAlias.UPDATE_PASSWORD];
     this.identityProviderLinksTab = "identity-provider-links-tab";
+    this.detailsTab = "user-details-tab";
     this.consentsTab = "user-consents-tab";
     this.sessionsTab = "user-sessions-tab";
   }
 
   public goToIdentityProviderLinksTab() {
+    cy.intercept("/admin/realms/master/identity-provider/instances").as(
+      "idpInstances",
+    );
+    cy.intercept("/admin/realms/master/users/*/federated-identity").as(
+      "fedIdentity",
+    );
     cy.findByTestId(this.identityProviderLinksTab).click();
-    cy.intercept("/admin/realms/master").as("load");
-    cy.wait(["@load"]);
+    cy.wait(["@idpInstances", "@fedIdentity"]);
 
     return this;
   }
@@ -57,6 +64,11 @@ export default class UserDetailsPage extends PageObject {
   cancel() {
     cy.findByTestId(this.cancelBtn).click();
 
+    return this;
+  }
+
+  goToDetailsTab() {
+    cy.findByTestId(this.detailsTab).click();
     return this;
   }
 

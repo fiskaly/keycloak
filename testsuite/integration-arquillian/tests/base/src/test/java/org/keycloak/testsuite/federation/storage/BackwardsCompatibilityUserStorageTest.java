@@ -22,16 +22,14 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.jboss.arquillian.graphene.page.Page;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.broker.provider.util.SimpleHttp;
-import org.keycloak.common.Profile.Feature;
 import org.keycloak.common.util.MultivaluedHashMap;
-import org.keycloak.credential.CredentialModel;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.credential.OTPCredentialModel;
+import org.keycloak.models.credential.PasswordCredentialModel;
 import org.keycloak.models.utils.TimeBasedOTP;
 import org.keycloak.representations.account.CredentialMetadataRepresentation;
 import org.keycloak.representations.idm.ComponentRepresentation;
@@ -43,7 +41,6 @@ import org.keycloak.storage.StorageId;
 import org.keycloak.storage.UserStorageProvider;
 import org.keycloak.testsuite.AbstractTestRealmKeycloakTest;
 import org.keycloak.testsuite.Assert;
-import org.keycloak.testsuite.ProfileAssume;
 import org.keycloak.testsuite.admin.ApiUtil;
 import org.keycloak.testsuite.federation.BackwardsCompatibilityUserStorageFactory;
 import org.keycloak.testsuite.pages.AppPage;
@@ -87,13 +84,6 @@ public class BackwardsCompatibilityUserStorageTest extends AbstractTestRealmKeyc
 
 
     private TimeBasedOTP totp = new TimeBasedOTP();
-
-
-
-    @BeforeClass
-    public static void checkNotMapStorage() {
-        ProfileAssume.assumeFeatureDisabled(Feature.MAP_STORAGE);
-    }
 
     @Before
     public void addProvidersBeforeTest() throws URISyntaxException, IOException {
@@ -152,7 +142,7 @@ public class BackwardsCompatibilityUserStorageTest extends AbstractTestRealmKeyc
 
         // Update his password
         CredentialRepresentation passwordRep = new CredentialRepresentation();
-        passwordRep.setType(CredentialModel.PASSWORD);
+        passwordRep.setType(PasswordCredentialModel.TYPE);
         passwordRep.setValue(password);
         passwordRep.setTemporary(false);
 
@@ -168,7 +158,7 @@ public class BackwardsCompatibilityUserStorageTest extends AbstractTestRealmKeyc
         getCleanup().addUserId(userId);
 
         // Setup OTP for the user
-        String totpSecret = setupOTPForUserWithRequiredAction(userId);
+        String totpSecret = setupOTPForUserWithRequiredAction(userId, true);
 
         // Assert user has OTP in the userStorage
         assertUserDontHaveDBCredentials();
@@ -209,7 +199,7 @@ public class BackwardsCompatibilityUserStorageTest extends AbstractTestRealmKeyc
         getCleanup().addUserId(userId);
 
         // Setup OTP
-        String totpSecret = setupOTPForUserWithRequiredAction(userId);
+        String totpSecret = setupOTPForUserWithRequiredAction(userId, true);
 
         assertUserDontHaveDBCredentials();
         assertUserHasOTPCredentialInUserStorage(true);
@@ -245,7 +235,7 @@ public class BackwardsCompatibilityUserStorageTest extends AbstractTestRealmKeyc
         String accountToken = tokenUtil.getToken();
 
         // Setup OTP
-        String totpSecret = setupOTPForUserWithRequiredAction(userId);
+        String totpSecret = setupOTPForUserWithRequiredAction(userId, false);
 
         assertUserDontHaveDBCredentials();
         assertUserHasOTPCredentialInUserStorage(true);
@@ -281,7 +271,7 @@ public class BackwardsCompatibilityUserStorageTest extends AbstractTestRealmKeyc
         getCleanup().addUserId(userId);
 
         // Setup OTP for the user
-        setupOTPForUserWithRequiredAction(userId);
+        setupOTPForUserWithRequiredAction(userId, true);
 
         // Assert user has OTP in the userStorage
         assertUserDontHaveDBCredentials();
@@ -315,7 +305,7 @@ public class BackwardsCompatibilityUserStorageTest extends AbstractTestRealmKeyc
     }
 
     // return created totpSecret
-    private String setupOTPForUserWithRequiredAction(String userId) throws URISyntaxException, IOException {
+    private String setupOTPForUserWithRequiredAction(String userId, boolean logoutOtherSessions) throws URISyntaxException, IOException {
         // Add required action to the user to reset OTP
         UserResource user = testRealm().users().get(userId);
         UserRepresentation userRep = user.toRepresentation();
@@ -328,6 +318,9 @@ public class BackwardsCompatibilityUserStorageTest extends AbstractTestRealmKeyc
         testAppHelper.startLogin("otp1", "pass");
 
         configureTotpRequiredActionPage.assertCurrent();
+        if (!logoutOtherSessions) {
+            configureTotpRequiredActionPage.uncheckLogoutSessions();
+        }
         String totpSecret = configureTotpRequiredActionPage.getTotpSecret();
         configureTotpRequiredActionPage.configure(totp.generateTOTP(totpSecret));
         appPage.assertCurrent();

@@ -5,6 +5,7 @@ import type {
   PolicyQuery,
 } from "@keycloak/keycloak-admin-client/lib/resources/clients";
 import {
+  Button,
   ButtonVariant,
   Chip,
   ChipGroup,
@@ -26,6 +27,11 @@ import { useRealm } from "../../context/realm-context/RealmContext";
 import { useFetch } from "../../utils/useFetch";
 import { toPolicyDetails } from "../routes/PolicyDetails";
 import { useConfirmDialog } from "../../components/confirm-dialog/ConfirmDialog";
+import { toCreatePolicy } from "../routes/NewPolicy";
+import { NewPolicyDialog } from "./NewPolicyDialog";
+import useToggle from "../../utils/useToggle";
+import PolicyProviderRepresentation from "@keycloak/keycloak-admin-client/lib/defs/policyProviderRepresentation";
+import { toResourceDetails } from "../routes/Resource";
 
 type Type = "resources" | "policies";
 
@@ -74,7 +80,7 @@ export const ResourcesPolicySelect = ({
   isRequired = false,
 }: ResourcesPolicySelectProps) => {
   const { realm } = useRealm();
-  const { t } = useTranslation("clients");
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   const {
@@ -84,7 +90,11 @@ export const ResourcesPolicySelect = ({
   const [items, setItems] = useState<Policies[]>([]);
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
-  const [clickedPolicy, setClickedPolicy] = useState<Policies>();
+  const [createPolicyDialog, toggleCreatePolicyDialog] = useToggle();
+  const [policyProviders, setPolicyProviders] =
+    useState<PolicyProviderRepresentation[]>();
+  const [onUnsavedChangesConfirm, setOnUnsavedChangesConfirm] =
+    useState<() => void>();
 
   const functions = typeMapping[name];
 
@@ -102,47 +112,59 @@ export const ResourcesPolicySelect = ({
         { id: clientId, first: 0, max: 10, permission: "false" },
         search === "" ? null : { name: search },
       );
-      return (
-        await Promise.all([
-          adminClient.clients[functions.searchFunction](params),
-          permissionId
-            ? adminClient.clients[functions.fetchFunction]({
-                id: clientId,
-                permissionId,
-              })
-            : Promise.resolve([]),
-        ])
-      )
-        .flat()
-        .filter(
-          (r): r is PolicyRepresentation | ResourceRepresentation =>
-            typeof r !== "string",
-        )
-        .map(convert)
-        .filter(
-          ({ id }, index, self) =>
-            index === self.findIndex(({ id: otherId }) => id === otherId),
-        );
+      return await Promise.all([
+        adminClient.clients.listPolicyProviders({ id: clientId }),
+        adminClient.clients[functions.searchFunction](params),
+        permissionId
+          ? adminClient.clients[functions.fetchFunction]({
+              id: clientId,
+              permissionId,
+            })
+          : Promise.resolve([]),
+      ]);
     },
-    setItems,
+    ([providers, ...policies]) => {
+      setPolicyProviders(
+        providers.filter((p) => p.type !== "resource" && p.type !== "scope"),
+      );
+      setItems(
+        policies
+          .flat()
+          .filter(
+            (r): r is PolicyRepresentation | ResourceRepresentation =>
+              typeof r !== "string",
+          )
+          .map(convert)
+          .filter(
+            ({ id }, index, self) =>
+              index === self.findIndex(({ id: otherId }) => id === otherId),
+          ),
+      );
+    },
     [search],
   );
 
   const [toggleUnsavedChangesDialog, UnsavedChangesConfirm] = useConfirmDialog({
     titleKey: t("unsavedChangesTitle"),
     messageKey: t("unsavedChangesConfirm"),
-    continueButtonLabel: t("common:continue"),
+    continueButtonLabel: t("continue"),
     continueButtonVariant: ButtonVariant.danger,
-    onConfirm: () => navigate(to(clickedPolicy!)),
+    onConfirm: () => onUnsavedChangesConfirm?.(),
   });
 
   const to = (policy: Policies) =>
-    toPolicyDetails({
-      realm: realm,
-      id: clientId,
-      policyId: policy.id!,
-      policyType: policy.type!,
-    });
+    name === "policies"
+      ? toPolicyDetails({
+          realm: realm,
+          id: clientId,
+          policyId: policy.id!,
+          policyType: policy.type!,
+        })
+      : toResourceDetails({
+          realm,
+          id: clientId,
+          resourceId: policy.id!,
+        });
 
   const toSelectOptions = () =>
     items.map((p) => (
@@ -157,40 +179,32 @@ export const ResourcesPolicySelect = ({
     return (
       <ChipGroup>
         {field.value?.map((permissionId) => {
-          const policy = items.find(
+          const item = items.find(
             (permission) => permission.id === permissionId,
           );
 
-          if (!policy) {
-            return null;
-          }
+          if (!item) return;
 
+          const route = to(item);
           return (
             <Chip
-              key={policy.id}
-              onClick={(event) => {
-                event.stopPropagation();
-                field.onChange(field.value?.filter((id) => id !== policy.id));
+              key={item.id}
+              onClick={() => {
+                field.onChange(field.value?.filter((id) => id !== item.id));
               }}
             >
-              {policy.type ? (
-                <Link
-                  to={to(policy)}
-                  onClick={(event) => {
-                    if (isDirty) {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setOpen(false);
-                      setClickedPolicy(policy);
-                      toggleUnsavedChangesDialog();
-                    }
-                  }}
-                >
-                  {policy.name}
-                </Link>
-              ) : (
-                policy.name
-              )}
+              <Link
+                to={route}
+                onClick={(event) => {
+                  if (isDirty) {
+                    event.preventDefault();
+                    setOnUnsavedChangesConfirm(() => () => navigate(route));
+                    toggleUnsavedChangesDialog();
+                  }
+                }}
+              >
+                {item.name}
+              </Link>
             </Chip>
           );
         })}
@@ -201,6 +215,17 @@ export const ResourcesPolicySelect = ({
   return (
     <>
       <UnsavedChangesConfirm />
+      {createPolicyDialog && (
+        <NewPolicyDialog
+          policyProviders={policyProviders}
+          onSelect={(p) => {
+            navigate(
+              toCreatePolicy({ id: clientId, realm, policyType: p.type! }),
+            );
+          }}
+          toggleDialog={toggleCreatePolicyDialog}
+        />
+      )}
       <Controller
         name={name}
         defaultValue={preSelected ? [preSelected] : []}
@@ -241,6 +266,27 @@ export const ResourcesPolicySelect = ({
             validated={errors[name] ? "error" : "default"}
             typeAheadAriaLabel={t(name)}
             chipGroupComponent={toChipGroupItems(field)}
+            footer={
+              name === "policies" ? (
+                <Button
+                  variant="link"
+                  isInline
+                  onClick={() => {
+                    if (isDirty) {
+                      setOpen(false);
+                      setOnUnsavedChangesConfirm(
+                        () => toggleCreatePolicyDialog,
+                      );
+                      toggleUnsavedChangesDialog();
+                    } else {
+                      toggleCreatePolicyDialog();
+                    }
+                  }}
+                >
+                  {t("createPolicy")}
+                </Button>
+              ) : undefined
+            }
           >
             {toSelectOptions()}
           </Select>

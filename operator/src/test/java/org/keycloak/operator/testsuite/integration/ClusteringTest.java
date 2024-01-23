@@ -31,7 +31,7 @@ import io.restassured.RestAssured;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 import org.keycloak.operator.Constants;
-import org.keycloak.operator.controllers.KeycloakService;
+import org.keycloak.operator.controllers.KeycloakServiceDependentResource;
 import org.keycloak.operator.crds.v2alpha1.deployment.Keycloak;
 import org.keycloak.operator.crds.v2alpha1.deployment.KeycloakStatusCondition;
 import org.keycloak.operator.crds.v2alpha1.realmimport.KeycloakRealmImport;
@@ -54,11 +54,11 @@ public class ClusteringTest extends BaseOperatorTest {
     @Test
     public void testMultipleDeployments() throws InterruptedException {
         // given
-        var kc = K8sUtils.getDefaultKeycloakDeployment();
+        var kc = getTestKeycloakDeployment(true);
 
         // another instance running off the same database
         // - should eventually give this a separate schema
-        var kc1 = K8sUtils.getDefaultKeycloakDeployment();
+        var kc1 = getTestKeycloakDeployment(true);
         kc1.getMetadata().setName("another-example");
         kc1.getSpec().getHostnameSpec().setHostname("another-example.com");
         // this is using the wrong tls-secret, but simply removing http spec renders the pod unstartable
@@ -108,8 +108,9 @@ public class ClusteringTest extends BaseOperatorTest {
 
     @Test
     public void testKeycloakScaleAsExpected() {
-        // given
-        var kc = K8sUtils.getDefaultKeycloakDeployment();
+        // given a starting point of a default keycloak with null/default instances
+        var kc = getTestKeycloakDeployment(false);
+        kc.getSpec().setInstances(null);
         var crSelector = k8sclient.resource(kc);
         K8sUtils.deployKeycloak(k8sclient, kc, true);
 
@@ -171,8 +172,7 @@ public class ClusteringTest extends BaseOperatorTest {
                 .untilAsserted(() -> assertThat(crSelector.scale().getStatus().getReplicas()).isEqualTo(2));
 
         // get the service
-        var service = new KeycloakService(k8sclient, kc);
-        String url = "https://" + service.getName() + "." + namespace + ":" + Constants.KEYCLOAK_HTTPS_PORT;
+        String url = "https://" + KeycloakServiceDependentResource.getServiceName(kc) + "." + namespace + ":" + Constants.KEYCLOAK_HTTPS_PORT + "/admin/master/console/";
 
         Awaitility.await().atMost(5, MINUTES).untilAsserted(() -> {
             Log.info("Starting curl Pod to test if the realm is available");
@@ -196,7 +196,7 @@ public class ClusteringTest extends BaseOperatorTest {
     public void testKeycloakCacheIsConnected() throws Exception {
         // given
         Log.info("Setup");
-        var kc = K8sUtils.getDefaultKeycloakDeployment();
+        var kc = getTestKeycloakDeployment(false);
         var crSelector = k8sclient.resource(kc);
         K8sUtils.deployKeycloak(k8sclient, kc, false);
         var targetInstances = 3;
@@ -274,7 +274,7 @@ public class ClusteringTest extends BaseOperatorTest {
 
         // This is to test passing through the "Service", not 100% deterministic, but a smoke test that things are working as expected
         // Executed here to avoid paying the setup time again
-        var service = new KeycloakService(k8sclient, kc);
+        String serviceName = KeycloakServiceDependentResource.getServiceName(kc);
         Awaitility.await()
                 .atMost(20, MINUTES)
                 .pollDelay(5, SECONDS)
@@ -285,7 +285,7 @@ public class ClusteringTest extends BaseOperatorTest {
             for (int i = 0; i < (targetInstances + 1); i++) {
 
                 if (token2 == null) {
-                    var tokenUrl = "https://" + service.getName() + "." + namespace + ":" + Constants.KEYCLOAK_HTTPS_PORT + "/realms/token-test/protocol/openid-connect/token";
+                    var tokenUrl = "https://" + serviceName + "." + namespace + ":" + Constants.KEYCLOAK_HTTPS_PORT + "/realms/token-test/protocol/openid-connect/token";
                     Log.info("Checking url: " + tokenUrl);
 
                     var tokenOutput = K8sUtils.inClusterCurl(k8sclient, namespace, "--insecure", "-s", "--data", "grant_type=password&client_id=token-test-client&username=test&password=test&scope=openid", tokenUrl);
@@ -295,7 +295,7 @@ public class ClusteringTest extends BaseOperatorTest {
                     token2 = tokenAnswer.get("access_token").asText();
                 }
 
-                String url = "https://" + service.getName() + "." + namespace + ":" + Constants.KEYCLOAK_HTTPS_PORT + "/realms/token-test/protocol/openid-connect/userinfo";
+                String url = "https://" + serviceName + "." + namespace + ":" + Constants.KEYCLOAK_HTTPS_PORT + "/realms/token-test/protocol/openid-connect/userinfo";
                 Log.info("Checking url: " + url);
 
                 var curlOutput = K8sUtils.inClusterCurl(k8sclient, namespace, "--insecure", "-s", "-H", "Authorization: Bearer " + token2, url);

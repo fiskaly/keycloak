@@ -69,7 +69,7 @@ import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.keycloak.testsuite.util.Matchers.*;
@@ -128,7 +128,7 @@ public class LogoutTest extends AbstractSamlTest {
             .targetAttributeSamlResponse()
             .targetUri(getSamlBrokerUrl(REALM_NAME))
             .build()
-          .updateProfile().username("a").email("a@b.c").firstName("A").lastName("B").build()
+          .updateProfile().username("aaa").email("a@b.c").firstName("A").lastName("B").build()
           .followOneRedirect()
 
           // Now returning back to the app

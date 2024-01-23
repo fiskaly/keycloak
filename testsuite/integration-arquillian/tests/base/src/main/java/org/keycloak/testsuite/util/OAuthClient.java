@@ -446,7 +446,7 @@ public class OAuthClient {
             e.printStackTrace();
         }
 
-        // load the trustore
+        // load the truststore
         KeyStore truststore = null;
         try {
             truststore = KeystoreUtil.loadKeyStore(trustStorePath, trustStorePassword);
@@ -970,6 +970,10 @@ public class OAuthClient {
             parameters.add(new BasicNameValuePair(OAuth2Constants.CLIENT_ID, clientId));
         }
 
+        if (dpopProof != null) {
+            post.addHeader("DPoP", dpopProof);
+        }
+
         UrlEncodedFormEntity formEntity;
         try {
             formEntity = new UrlEncodedFormEntity(parameters, "UTF-8");
@@ -1002,6 +1006,9 @@ public class OAuthClient {
         }
         if (refreshToken != null) {
             parameters.add(new BasicNameValuePair(OAuth2Constants.REFRESH_TOKEN, refreshToken));
+        }
+        if (scope != null) {
+            parameters.add(new BasicNameValuePair(OAuth2Constants.SCOPE, scope));
         }
         if (clientId != null && password != null) {
             String authorization = BasicAuthHelper.createHeader(clientId, password);
@@ -1057,7 +1064,7 @@ public class OAuthClient {
                 parameters.add(new BasicNameValuePair(OAuth2Constants.SCOPE, scopeParam));
             }
             if (nonce != null) {
-                parameters.add(new BasicNameValuePair(OIDCLoginProtocol.NONCE_PARAM, scope));
+                parameters.add(new BasicNameValuePair(OIDCLoginProtocol.NONCE_PARAM, nonce));
             }
             if (codeChallenge != null) {
                 parameters.add(new BasicNameValuePair(OAuth2Constants.CODE_CHALLENGE, codeChallenge));
@@ -1139,15 +1146,41 @@ public class OAuthClient {
         }
     }
 
+    public UserInfoResponse doUserInfoRequestByGet(String accessToken) throws Exception {
+        try (CloseableHttpClient client = HttpClientBuilder.create().build()) {
+            HttpGet get = new HttpGet(getUserInfoUrl());
+            get.setHeader("Authorization", "Bearer " + accessToken);
+            if (dpopProof != null) {
+                get.addHeader("DPoP", dpopProof);
+            }
+            return new UserInfoResponse(client.execute(get));
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
     public ParResponse doPushedAuthorizationRequest(String clientId, String clientSecret) throws IOException {
-        return doPushedAuthorizationRequest(clientId, clientSecret, (CloseableHttpResponse c)->{});
+        return doPushedAuthorizationRequest(clientId, clientSecret, (CloseableHttpResponse c)->{}, null);
+    }
+
+    public ParResponse doPushedAuthorizationRequest(String clientId, String clientSecret, String signedJwt) throws IOException {
+        return doPushedAuthorizationRequest(clientId, clientSecret, (CloseableHttpResponse c)->{}, signedJwt);
     }
 
     public ParResponse doPushedAuthorizationRequest(String clientId, String clientSecret, Consumer<CloseableHttpResponse> c) throws IOException {
-        try (CloseableHttpClient client = HttpClientBuilder.create().build()) {
+        return doPushedAuthorizationRequest(clientId, clientSecret, c, null);
+    }
+
+    public ParResponse doPushedAuthorizationRequest(String clientId, String clientSecret, Consumer<CloseableHttpResponse> c, String signedJwt) throws IOException {
+        try (CloseableHttpClient client = httpClient.get()) {
             HttpPost post = new HttpPost(getParEndpointUrl());
 
             List<NameValuePair> parameters = new LinkedList<>();
+
+            if (signedJwt != null) {
+                parameters.add(new BasicNameValuePair(OAuth2Constants.CLIENT_ASSERTION_TYPE, OAuth2Constants.CLIENT_ASSERTION_TYPE_JWT));
+                parameters.add(new BasicNameValuePair(OAuth2Constants.CLIENT_ASSERTION, signedJwt));
+            }
 
             if (origin != null) {
                 post.addHeader("Origin", origin);
@@ -1161,6 +1194,8 @@ public class OAuthClient {
             if (clientId != null && clientSecret != null) {
                 String authorization = BasicAuthHelper.createHeader(clientId, clientSecret);
                 post.setHeader("Authorization", authorization);
+            }
+            if (clientId != null) {
                 parameters.add(new BasicNameValuePair(OAuth2Constants.CLIENT_ID, clientId));
             }
             if (redirectUri != null) {
@@ -1366,6 +1401,9 @@ public class OAuthClient {
         int index = driver.getCurrentUrl().indexOf('?');
         if (index == -1) {
             index = driver.getCurrentUrl().indexOf('#');
+            if (index == -1) {
+                index = driver.getCurrentUrl().length();
+            }
         }
         return driver.getCurrentUrl().substring(0, index);
     }
@@ -1380,7 +1418,7 @@ public class OAuthClient {
 
     public Map<String, String> getCurrentQuery() {
         Map<String, String> m = new HashMap<>();
-        List<NameValuePair> pairs = URLEncodedUtils.parse(getCurrentUri(), "UTF-8");
+        List<NameValuePair> pairs = URLEncodedUtils.parse(getCurrentUri(), StandardCharsets.UTF_8);
         for (NameValuePair p : pairs) {
             m.put(p.getName(), p.getValue());
         }
@@ -1447,6 +1485,10 @@ public class OAuthClient {
     }
 
     public String getLoginFormUrl() {
+        return this.getLoginFormUrl(this.baseUrl);
+    }
+
+    public String getLoginFormUrl(String baseUrl) {
         UriBuilder b = OIDCLoginProtocolService.authUrl(UriBuilder.fromUri(baseUrl));
         if (responseType != null) {
             b.queryParam(OAuth2Constants.RESPONSE_TYPE, responseType);
@@ -2273,6 +2315,44 @@ public class OAuthClient {
 
         public int getInterval() {
             return interval;
+        }
+
+        public int getStatusCode() {
+            return statusCode;
+        }
+
+        public Map<String, String> getHeaders() {
+            return headers;
+        }
+    }
+
+    public static class UserInfoResponse {
+        private int statusCode;
+
+        private UserInfo userInfo;
+
+        private Map<String, String> headers;
+
+        public UserInfoResponse(CloseableHttpResponse response) throws Exception {
+            try {
+                statusCode = response.getStatusLine().getStatusCode();
+
+                headers = new HashMap<>();
+
+                for (Header h : response.getAllHeaders()) {
+                    headers.put(h.getName(), h.getValue());
+                }
+
+                if (statusCode == 200) {
+                    userInfo = JsonSerialization.readValue(response.getEntity().getContent(), UserInfo.class);
+                }
+            } finally {
+                response.close();
+            }
+        }
+
+        public UserInfo getUserInfo() {
+            return userInfo;
         }
 
         public int getStatusCode() {

@@ -81,7 +81,7 @@ import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
 import org.keycloak.util.JsonSerialization;
 
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 /**
  *
@@ -169,7 +169,7 @@ public class ExportImportUtil {
 
         UserRepresentation wburke = findByUsername(realmRsc, "wburke");
         // user with creation timestamp in import
-        Assert.assertEquals(new Long(123654), wburke.getCreatedTimestamp());
+        Assert.assertEquals(Long.valueOf(123654), wburke.getCreatedTimestamp());
         allRoles = allRoles(realmRsc, wburke);
         Assert.assertEquals(2, allRoles.size());
         Assert.assertFalse(containsRole(allRoles, findRealmRole(realmRsc, "admin")));
@@ -182,7 +182,7 @@ public class ExportImportUtil {
 
         UserRepresentation loginclient = findByUsername(realmRsc, "loginclient");
         // user with creation timestamp as string in import
-        Assert.assertEquals(new Long(123655), loginclient.getCreatedTimestamp());
+        Assert.assertEquals(Long.valueOf(123655), loginclient.getCreatedTimestamp());
 
         UserRepresentation hashedPasswordUser = findByUsername(realmRsc, "hashedpassworduser");
         CredentialRepresentation password = realmRsc.users().get(hashedPasswordUser.getId()).credentials().stream()
@@ -461,7 +461,7 @@ public class ExportImportUtil {
         Assert.assertTrue(includeInIdToken == null || Boolean.parseBoolean(includeInIdToken) == false);
     }
 
-    private static ProtocolMapperRepresentation findMapperByName(List<ProtocolMapperRepresentation> mappers, String type, String name) {
+    public static ProtocolMapperRepresentation findMapperByName(List<ProtocolMapperRepresentation> mappers, String type, String name) {
         if (mappers == null) {
             return null;
         }
@@ -593,11 +593,11 @@ public class ExportImportUtil {
         Assert.assertNotNull(authzResource);
 
         List<ResourceRepresentation> resources = authzResource.resources().resources();
-        Assert.assertThat(resources.stream().map(ResourceRepresentation::getName).collect(Collectors.toList()),
+        assertThat(resources.stream().map(ResourceRepresentation::getName).collect(Collectors.toList()),
                 Matchers.containsInAnyOrder("Default Resource", "test"));
 
         List<PolicyRepresentation> policies = authzResource.policies().policies();
-        Assert.assertThat(policies.stream().map(PolicyRepresentation::getName).collect(Collectors.toList()),
+        assertThat(policies.stream().map(PolicyRepresentation::getName).collect(Collectors.toList()),
                 Matchers.containsInAnyOrder("User Policy", "Default Permission", "test-permission"));
     }
 

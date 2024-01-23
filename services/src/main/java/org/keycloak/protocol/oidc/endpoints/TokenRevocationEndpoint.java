@@ -51,6 +51,7 @@ import org.keycloak.services.CorsErrorResponseException;
 import org.keycloak.services.clientpolicy.ClientPolicyException;
 import org.keycloak.services.clientpolicy.context.TokenRevokeContext;
 import org.keycloak.services.clientpolicy.context.TokenRevokeResponseContext;
+import org.keycloak.services.managers.UserConsentManager;
 import org.keycloak.services.managers.UserSessionCrossDCManager;
 import org.keycloak.services.managers.UserSessionManager;
 import org.keycloak.services.resources.Cors;
@@ -182,7 +183,7 @@ public class TokenRevocationEndpoint {
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_TOKEN, "Invalid token", Response.Status.OK);
         }
 
-        if (!(TokenUtil.TOKEN_TYPE_REFRESH.equals(token.getType()) || TokenUtil.TOKEN_TYPE_OFFLINE.equals(token.getType()) || TokenUtil.TOKEN_TYPE_BEARER.equals(token.getType()))) {
+        if (!(TokenUtil.TOKEN_TYPE_REFRESH.equals(token.getType()) || TokenUtil.TOKEN_TYPE_OFFLINE.equals(token.getType()) || TokenUtil.TOKEN_TYPE_BEARER.equals(token.getType())|| TokenUtil.TOKEN_TYPE_DPOP.equals(token.getType()))) {
             event.error(Errors.INVALID_TOKEN_TYPE);
             throw new CorsErrorResponseException(cors, OAuthErrorException.UNSUPPORTED_TOKEN_TYPE, "Unsupported token type",
                 Response.Status.BAD_REQUEST);
@@ -241,7 +242,7 @@ public class TokenRevocationEndpoint {
     }
 
     private void revokeClient() {
-        session.users().revokeConsentForClient(realm, user.getId(), client.getId());
+        UserConsentManager.revokeConsentForClient(session, realm, user, client.getId());
         if (TokenUtil.TOKEN_TYPE_OFFLINE.equals(token.getType())) {
             new UserSessionManager(session).revokeOfflineToken(user, client);
         }

@@ -36,6 +36,8 @@ import org.keycloak.migration.migrators.MigrateTo1_9_0;
 import org.keycloak.migration.migrators.MigrateTo1_9_2;
 import org.keycloak.migration.migrators.MigrateTo21_0_0;
 import org.keycloak.migration.migrators.MigrateTo22_0_0;
+import org.keycloak.migration.migrators.MigrateTo23_0_0;
+import org.keycloak.migration.migrators.MigrateTo24_0_0;
 import org.keycloak.migration.migrators.MigrateTo2_0_0;
 import org.keycloak.migration.migrators.MigrateTo2_1_0;
 import org.keycloak.migration.migrators.MigrateTo2_2_0;
@@ -110,7 +112,9 @@ public class LegacyMigrationManager implements MigrationManager {
             new MigrateTo18_0_0(),
             new MigrateTo20_0_0(),
             new MigrateTo21_0_0(),
-            new MigrateTo22_0_0()
+            new MigrateTo22_0_0(),
+            new MigrateTo23_0_0(),
+            new MigrateTo24_0_0()
     };
 
     private final KeycloakSession session;
@@ -119,6 +123,7 @@ public class LegacyMigrationManager implements MigrationManager {
         this.session = session;
     }
 
+    @Override
     public void migrate() {
         session.setAttribute(Constants.STORAGE_BATCH_ENABLED, Boolean.getBoolean("keycloak.migration.batch-enabled"));
         session.setAttribute(Constants.STORAGE_BATCH_SIZE, Integer.getInteger("keycloak.migration.batch-size"));
@@ -161,6 +166,7 @@ public class LegacyMigrationManager implements MigrationManager {
         PATTERN_MATCHER.put(Pattern.compile("^7\\.4\\.\\d+\\.GA$"), RHSSO_VERSION_7_4_KEYCLOAK_VERSION);
     }
 
+    @Override
     public void migrate(RealmModel realm, RealmRepresentation rep, boolean skipUserDependent) {
         ModelVersion stored = null;
         if (rep.getKeycloakVersion() != null) {

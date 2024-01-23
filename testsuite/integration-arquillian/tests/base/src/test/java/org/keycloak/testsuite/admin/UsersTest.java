@@ -17,18 +17,15 @@
 
 package org.keycloak.testsuite.admin;
 
-import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.resource.AuthorizationResource;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.common.Profile;
-import org.keycloak.models.Constants;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.ManagementPermissionRepresentation;
-import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.representations.idm.authorization.DecisionStrategy;
@@ -36,9 +33,7 @@ import org.keycloak.representations.idm.authorization.PolicyRepresentation;
 import org.keycloak.representations.idm.authorization.ScopePermissionRepresentation;
 import org.keycloak.representations.idm.authorization.UserPolicyRepresentation;
 import org.keycloak.testsuite.arquillian.annotation.EnableFeature;
-import org.keycloak.testsuite.updaters.RealmAttributeUpdater;
 import org.keycloak.testsuite.util.AdminClientUtil;
-import org.keycloak.testsuite.util.RealmBuilder;
 
 import java.io.IOException;
 import java.security.KeyManagementException;
@@ -47,9 +42,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.hamcrest.CoreMatchers.is;
@@ -69,6 +62,24 @@ public class UsersTest extends AbstractAdminTest {
         }
     }
 
+    @Override
+    protected boolean isImportAfterEachMethod() {
+        // always import realm due to changes in setupTestEnvironmentWithPermissions
+        return true;
+    }
+
+    @Test
+    public void searchUserWithWildcards() throws Exception {
+        createUser(REALM_NAME, "User", "password", "firstName", "lastName", "user@example.com");
+
+        assertThat(adminClient.realm(REALM_NAME).users().search("Use%", null, null), hasSize(0));
+        assertThat(adminClient.realm(REALM_NAME).users().search("Use_", null, null), hasSize(0));
+        assertThat(adminClient.realm(REALM_NAME).users().search("Us_r", null, null), hasSize(0));
+        assertThat(adminClient.realm(REALM_NAME).users().search("Use", null, null), hasSize(1));
+        assertThat(adminClient.realm(REALM_NAME).users().search("Use*", null, null), hasSize(1));
+        assertThat(adminClient.realm(REALM_NAME).users().search("Us*e", null, null), hasSize(1));
+    }
+
     @Test
     public void searchUserDefaultSettings() throws Exception {
         createUser(REALM_NAME, "User", "password", "firstName", "lastName", "user@example.com");
@@ -85,50 +96,6 @@ public class UsersTest extends AbstractAdminTest {
         List<UserRepresentation> users = adminClient.realm(REALM_NAME).users().search(search, null, null);
         assertThat(users, hasSize(1));
         assertThat(users.get(0).getUsername(), is("john.doe"));
-    }
-
-    @Test
-    public void searchUserCaseSensitiveFirst() throws Exception {
-        Assume.assumeFalse(isJpaRealmProvider());
-        Map<String, String> attributes = new HashMap<>();
-        attributes.put(Constants.REALM_ATTR_USERNAME_CASE_SENSITIVE, "true");
-        try (AutoCloseable c = new RealmAttributeUpdater(adminClient.realm(REALM_NAME))
-                .updateWith(r -> r.setAttributes(attributes))
-                .update()) {
-
-            createUser(REALM_NAME, "User", "password", "firstName", "lastName", "user@example.com");
-
-            assertCaseSensitiveSearch();
-
-            RealmRepresentation realmRep = adminClient.realm(REALM_NAME).toRepresentation();
-            RealmBuilder.edit(realmRep)
-                    .attribute(Constants.REALM_ATTR_USERNAME_CASE_SENSITIVE, "false");
-            realm.update(realmRep);
-
-            assertCaseInsensitiveSearch();
-        }
-    }
-
-    @Test
-    public void searchUserCaseInSensitiveFirst() throws Exception {
-        Assume.assumeFalse(isJpaRealmProvider());
-        Map<String, String> attributes = new HashMap<>();
-        attributes.put(Constants.REALM_ATTR_USERNAME_CASE_SENSITIVE, "false");
-        try (AutoCloseable c = new RealmAttributeUpdater(adminClient.realm(REALM_NAME))
-                .updateWith(r -> r.setAttributes(attributes))
-                .update()) {
-
-            createUser(REALM_NAME, "User", "password", "firstName", "lastName", "user@example.com");
-
-            assertCaseInsensitiveSearch();
-
-            RealmRepresentation realmRep = adminClient.realm(REALM_NAME).toRepresentation();
-            RealmBuilder.edit(realmRep)
-                    .attribute(Constants.REALM_ATTR_USERNAME_CASE_SENSITIVE, "true");
-            realm.update(realmRep);
-
-            assertCaseSensitiveSearch();
-        }
     }
 
     /**
@@ -473,20 +440,6 @@ public class UsersTest extends AbstractAdminTest {
         assertThat(realm.users().search("user", true), hasSize(1));
         assertThat(realm.users().search("User", true), hasSize(1));
         assertThat(realm.users().search("USER", true), hasSize(1));
-        assertThat(realm.users().search("Use", true), hasSize(0));
-    }
-
-    private void assertCaseSensitiveSearch() {
-        // not-exact case-sensitive search
-        assertThat(realm.users().search("user"), hasSize(0));
-        assertThat(realm.users().search("User"), hasSize(1));
-        assertThat(realm.users().search("USER"), hasSize(0));
-        assertThat(realm.users().search("Use"), hasSize(1));
-        
-        // exact case-sensitive search
-        assertThat(realm.users().search("user", true), hasSize(0));
-        assertThat(realm.users().search("User", true), hasSize(1));
-        assertThat(realm.users().search("USER", true), hasSize(0));
         assertThat(realm.users().search("Use", true), hasSize(0));
     }
 }

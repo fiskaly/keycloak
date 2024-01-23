@@ -1,9 +1,8 @@
 import { lazy } from "react";
-import type { Path } from "react-router-dom";
-import { generatePath } from "react-router-dom";
+import { generatePath, type Path } from "react-router-dom";
 import type { AppRouteObject } from "../../routes";
 
-export type GroupsParams = { realm: string; id?: string };
+export type GroupsParams = { realm: string; id?: string; lazy?: string };
 
 const GroupsSection = lazy(() => import("../GroupsSection"));
 

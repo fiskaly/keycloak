@@ -1,8 +1,10 @@
 package org.keycloak.config;
 
 import java.io.File;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Predicate;
 
 public class LoggingOptions {
 
@@ -11,6 +13,7 @@ public class LoggingOptions {
     public static final Output DEFAULT_CONSOLE_OUTPUT = Output.DEFAULT;
     public static final String DEFAULT_LOG_FILENAME = "keycloak.log";
     public static final String DEFAULT_LOG_PATH = "data" + File.separator + "log" + File.separator + DEFAULT_LOG_FILENAME;
+    public static final Boolean GELF_ACTIVATED = isGelfActivated();
 
     public enum Handler {
         console,
@@ -18,10 +21,20 @@ public class LoggingOptions {
         gelf
     }
 
-    public static final Option LOG = new OptionBuilder("log", List.class, Handler.class)
+    public static List<String> getAvailableHandlerNames() {
+        final Predicate<Handler> checkGelf = (handler) -> GELF_ACTIVATED || !handler.equals(Handler.gelf);
+
+        return Arrays.stream(Handler.values())
+                .filter(checkGelf)
+                .map(Handler::name)
+                .toList();
+    }
+
+    public static final Option<List<Handler>> LOG = OptionBuilder.listOptionBuilder("log", Handler.class)
             .category(OptionCategory.LOGGING)
             .description("Enable one or more log handlers in a comma-separated list.")
-            .defaultValue(DEFAULT_LOG_HANDLER)
+            .expectedValues(getAvailableHandlerNames())
+            .defaultValue(Arrays.asList(DEFAULT_LOG_HANDLER))
             .build();
 
     public enum Level {
@@ -40,9 +53,9 @@ public class LoggingOptions {
         }
     }
 
-    public static final Option<String> LOG_LEVEL = new OptionBuilder<>("log-level", String.class)
+    public static final Option<List<String>> LOG_LEVEL = OptionBuilder.listOptionBuilder("log-level", String.class)
             .category(OptionCategory.LOGGING)
-            .defaultValue(DEFAULT_LOG_LEVEL.toString())
+            .defaultValue(Arrays.asList(DEFAULT_LOG_LEVEL.toString()))
             .description("The log level of the root category or a comma-separated list of individual categories and their levels. For the root category, you don't need to specify a category.")
             .build();
 
@@ -168,4 +181,13 @@ public class LoggingOptions {
             .description("Include source code location.")
             .defaultValue(Boolean.TRUE)
             .build();
+
+    private static boolean isGelfActivated() {
+        try {
+            Thread.currentThread().getContextClassLoader().loadClass("io.quarkus.logging.gelf.GelfConfig");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
 }

@@ -128,8 +128,14 @@ public class GroupResource {
         }
 
         if (!Objects.equals(groupName, group.getName())) {
-            boolean exists = siblings().filter(s -> !Objects.equals(s.getId(), group.getId()))
-                    .anyMatch(s -> Objects.equals(s.getName(), groupName));
+            boolean exists;
+            if (group.getParentId() == null) {
+                exists = session.groups().searchForGroupByNameStream(realm, groupName, true, null, null)
+                        .anyMatch(s -> !Objects.equals(s.getId(), group.getId()));
+            } else {
+                exists = group.getParent().getSubGroupsStream().filter(s -> !Objects.equals(s.getId(), group.getId()))
+                        .anyMatch(s -> Objects.equals(s.getName(), groupName));
+            }
             if (exists) {
                 throw ErrorResponse.exists("Sibling group named '" + groupName + "' already exists.");
             }
@@ -141,14 +147,6 @@ public class GroupResource {
         return Response.noContent().build();
     }
     
-    private Stream<GroupModel> siblings() {
-        if (group.getParentId() == null) {
-            return session.groups().getTopLevelGroupsStream(realm);
-        } else {
-            return group.getParent().getSubGroupsStream();
-        }
-    }
-
     @DELETE
     @Tag(name = KeycloakOpenAPI.Admin.Tags.GROUPS)
     @Operation()
